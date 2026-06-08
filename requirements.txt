@@ -1,4 +1,3 @@
-python-telegram-bot
-sightengine
+python-telegram-bot[job-queue]
 flask
-requests
+feedparser
