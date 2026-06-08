@@ -1,6 +1,7 @@
 import os
 import feedparser
 import threading
+import requests
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, ContextTypes
 from flask import Flask
@@ -11,7 +12,6 @@ from flask import Flask
 TOKEN_API = "8987529061:AAHbtHB9MjWyFN1-l9hxQlqMqNeTwL8ODY0"
 CHAT_ID = -1003444527887  # Tu ID real de supergrupo
 
-# Fuentes RSS
 RSS_URLS = [
     "https://news.google.com/rss/search?q=Venezuela&hl=es-419&gl=VE&ceid=VE:es-419",
     "https://elpitazo.net/feed/",
@@ -21,13 +21,13 @@ RSS_URLS = [
 enlaces_enviados = set()
 
 # =========================================================================
-# SERVIDOR WEB FANTASMA (PARA RENDER)
+# SERVIDOR WEB FANTASMA
 # =========================================================================
 app_web = Flask(__name__)
 
 @app_web.route('/')
 def index():
-    return "Bot activo: Usando motor nativo de Telegram para imágenes."
+    return "Bot activo: Desempaquetando URLs para vistas previas nativas."
 
 def correr_servidor_web():
     puerto = int(os.environ.get("PORT", 8080))
@@ -37,7 +37,27 @@ def limpiar_html(texto):
     return texto.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 # =========================================================================
-# LECTURA Y PUBLICACIÓN DE NOTICIAS
+# MOTOR DESEMPAQUETADOR
+# =========================================================================
+def desempaquetar_url(url_original):
+    # Si no es de Google, no perdemos tiempo, devolvemos la original
+    if "news.google.com" not in url_original:
+        return url_original
+        
+    try:
+        # Cabecera para simular un navegador
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/114.0.0.0 Safari/537.36"
+        }
+        # Hacemos la petición y dejamos que siga la redirección
+        respuesta = requests.get(url_original, headers=headers, timeout=5, allow_redirects=True)
+        return respuesta.url
+    except Exception as e:
+        print(f"Error al desempaquetar {url_original}: {e}")
+        return url_original
+
+# =========================================================================
+# LECTURA Y PUBLICACIÓN
 # =========================================================================
 async def chequear_y_publicar_rss(context: ContextTypes.DEFAULT_TYPE):
     print("Revisando fuentes RSS...")
@@ -46,27 +66,27 @@ async def chequear_y_publicar_rss(context: ContextTypes.DEFAULT_TYPE):
         try:
             feed = feedparser.parse(url_feed)
             
-            # Limita a 3 noticias por medio
             for entrada in reversed(feed.entries[:3]):
-                enlace = entrada.link
+                enlace_sucio = entrada.link
                 
-                if enlace not in enlaces_enviados:
+                if enlace_sucio not in enlaces_enviados:
                     titulo = limpiar_html(entrada.title)
                     fuente = limpiar_html(entrada.source.title) if hasattr(entrada, 'source') else "Fuente de noticias"
                     
-                    # EL TRUCO: Enlace invisible al principio (&#8203;)
-                    # Obliga a Telegram a generar la vista previa con imagen nativamente.
+                    # 1. Obtenemos el enlace real del periódico
+                    enlace_limpio = desempaquetar_url(enlace_sucio)
+                    
+                    # 2. Insertamos el enlace limpio en la etiqueta invisible de Telegram
                     mensaje = (
-                        f"<a href='{enlace}'>&#8203;</a>📰 <b>{titulo}</b>\n\n"
+                        f"<a href='{enlace_limpio}'>&#8203;</a>📰 <b>{titulo}</b>\n\n"
                         f"✏️ <b>Fuente:</b> {fuente}"
                     )
                     
-                    # Botón inferior para leer la noticia
-                    botones = [[InlineKeyboardButton(text="🔗 Leer noticia completa", url=enlace)]]
+                    # 3. El botón también lleva al usuario a la URL limpia
+                    botones = [[InlineKeyboardButton(text="🔗 Leer noticia completa", url=enlace_limpio)]]
                     teclado = InlineKeyboardMarkup(botones)
                     
                     try:
-                        # Ahora siempre usamos send_message
                         await context.bot.send_message(
                             chat_id=CHAT_ID, 
                             text=mensaje, 
@@ -74,13 +94,13 @@ async def chequear_y_publicar_rss(context: ContextTypes.DEFAULT_TYPE):
                             reply_markup=teclado
                         )
                         
-                        enlaces_enviados.add(enlace)
-                        print(f"Publicada: {titulo}")
+                        enlaces_enviados.add(enlace_sucio)
+                        print(f"Publicada con éxito: {titulo}")
                     except Exception as e_envio:
-                        print(f"Error en Telegram al publicar ({titulo}): {e_envio}")
+                        print(f"Error publicando en Telegram ({titulo}): {e_envio}")
                         
         except Exception as e:
-            print(f"Error general procesando el feed {url_feed}: {e}")
+            print(f"Error procesando el feed {url_feed}: {e}")
 
 # =========================================================================
 # ARRANQUE
@@ -94,7 +114,6 @@ def main():
 
     app = Application.builder().token(TOKEN_API).build()
 
-    # Ejecuta cada 30 minutos (1800 segundos)
     app.job_queue.run_repeating(chequear_y_publicar_rss, interval=1800, first=5)
 
     app.run_polling()
