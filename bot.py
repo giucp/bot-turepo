@@ -8,7 +8,7 @@ from flask import Flask
 # CONFIGURACIÓN
 # =========================================================================
 TOKEN_API = "8987529061:AAHbtHB9MjWyFN1-l9hxQlqMqNeTwL8ODY0"
-CHAT_ID = 8954280016  # Reemplaza con el ID numérico exacto de tu grupo
+CHAT_ID = -3444527887  # Reemplaza con el ID numérico exacto de tu grupo
 
 # Fuente de noticias
 RSS_URL = "https://news.google.com/rss/search?q=Venezuela&hl=es-419&gl=VE&ceid=VE:es-419"
