@@ -1,7 +1,6 @@
 import os
 import feedparser
 import threading
-import requests
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, ContextTypes
 from flask import Flask
@@ -27,7 +26,7 @@ app_web = Flask(__name__)
 
 @app_web.route('/')
 def index():
-    return "Bot activo: Desempaquetando URLs para vistas previas nativas."
+    return "Bot activo: Lógica condicional de previsualizaciones implementada."
 
 def correr_servidor_web():
     puerto = int(os.environ.get("PORT", 8080))
@@ -37,27 +36,7 @@ def limpiar_html(texto):
     return texto.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 # =========================================================================
-# MOTOR DESEMPAQUETADOR
-# =========================================================================
-def desempaquetar_url(url_original):
-    # Si no es de Google, no perdemos tiempo, devolvemos la original
-    if "news.google.com" not in url_original:
-        return url_original
-        
-    try:
-        # Cabecera para simular un navegador
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/114.0.0.0 Safari/537.36"
-        }
-        # Hacemos la petición y dejamos que siga la redirección
-        respuesta = requests.get(url_original, headers=headers, timeout=5, allow_redirects=True)
-        return respuesta.url
-    except Exception as e:
-        print(f"Error al desempaquetar {url_original}: {e}")
-        return url_original
-
-# =========================================================================
-# LECTURA Y PUBLICACIÓN
+# LECTURA Y PUBLICACIÓN CONDICIONAL
 # =========================================================================
 async def chequear_y_publicar_rss(context: ContextTypes.DEFAULT_TYPE):
     print("Revisando fuentes RSS...")
@@ -67,35 +46,46 @@ async def chequear_y_publicar_rss(context: ContextTypes.DEFAULT_TYPE):
             feed = feedparser.parse(url_feed)
             
             for entrada in reversed(feed.entries[:3]):
-                enlace_sucio = entrada.link
+                enlace = entrada.link
                 
-                if enlace_sucio not in enlaces_enviados:
+                if enlace not in enlaces_enviados:
                     titulo = limpiar_html(entrada.title)
                     fuente = limpiar_html(entrada.source.title) if hasattr(entrada, 'source') else "Fuente de noticias"
                     
-                    # 1. Obtenemos el enlace real del periódico
-                    enlace_limpio = desempaquetar_url(enlace_sucio)
-                    
-                    # 2. Insertamos el enlace limpio en la etiqueta invisible de Telegram
-                    mensaje = (
-                        f"<a href='{enlace_limpio}'>&#8203;</a>📰 <b>{titulo}</b>\n\n"
-                        f"✏️ <b>Fuente:</b> {fuente}"
-                    )
-                    
-                    # 3. El botón también lleva al usuario a la URL limpia
-                    botones = [[InlineKeyboardButton(text="🔗 Leer noticia completa", url=enlace_limpio)]]
+                    botones = [[InlineKeyboardButton(text="🔗 Leer noticia completa", url=enlace)]]
                     teclado = InlineKeyboardMarkup(botones)
                     
                     try:
-                        await context.bot.send_message(
-                            chat_id=CHAT_ID, 
-                            text=mensaje, 
-                            parse_mode="HTML",
-                            reply_markup=teclado
-                        )
+                        # Si la noticia viene de Google News (se anula la vista previa)
+                        if "news.google.com" in url_feed or "news.google.com" in enlace:
+                            mensaje = (
+                                f"📰 <b>{titulo}</b>\n\n"
+                                f"✏️ <b>Fuente:</b> {fuente}"
+                            )
+                            await context.bot.send_message(
+                                chat_id=CHAT_ID, 
+                                text=mensaje, 
+                                parse_mode="HTML",
+                                reply_markup=teclado,
+                                disable_web_page_preview=True
+                            )
                         
-                        enlaces_enviados.add(enlace_sucio)
-                        print(f"Publicada con éxito: {titulo}")
+                        # Si es de cualquier otro periódico (se fuerza la imagen con el enlace invisible)
+                        else:
+                            mensaje = (
+                                f"<a href='{enlace}'>&#8203;</a>📰 <b>{titulo}</b>\n\n"
+                                f"✏️ <b>Fuente:</b> {fuente}"
+                            )
+                            await context.bot.send_message(
+                                chat_id=CHAT_ID, 
+                                text=mensaje, 
+                                parse_mode="HTML",
+                                reply_markup=teclado,
+                                disable_web_page_preview=False
+                            )
+                        
+                        enlaces_enviados.add(enlace)
+                        print(f"Publicada: {titulo}")
                     except Exception as e_envio:
                         print(f"Error publicando en Telegram ({titulo}): {e_envio}")
                         
