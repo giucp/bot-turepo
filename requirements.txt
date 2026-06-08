@@ -1,3 +1,5 @@
 python-telegram-bot[job-queue]
 flask
 feedparser
+requests
+beautifulsoup4
