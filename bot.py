@@ -114,7 +114,7 @@ async def chequear_y_publicar_rss(context: ContextTypes.DEFAULT_TYPE):
 # ARRANQUE
 # =========================================================================
 def main():
-    if TOKEN_API == "TU_TOKEN_DE_BOTFATHER" or CHAT_ID == -100XXXXXXXXXX:
+    if TOKEN_API == "TU_TOKEN_DE_BOTFATHER":
         print("ERROR: Configura las variables TOKEN_API y CHAT_ID.")
         return
 
